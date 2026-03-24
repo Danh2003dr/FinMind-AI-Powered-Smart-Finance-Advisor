@@ -1,4 +1,5 @@
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
 import { useAppStore } from '../../store/useAppStore';
 
 function navClass(active: boolean) {
@@ -42,6 +43,8 @@ function PlaceholderNav({ icon, label }: { icon: string; label: string }) {
 
 export function Sidebar() {
   const { sidebarOpen, setSidebarOpen } = useAppStore();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <>
@@ -136,14 +139,18 @@ export function Sidebar() {
             Ask AI Assistant
           </Link>
           <PlaceholderNav icon="help" label="Support" />
-          <Link
-            to="/login"
-            className="flex items-center gap-3 px-4 py-3 text-slate-400 transition-colors hover:text-red-400"
-            onClick={() => setSidebarOpen(false)}
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 px-4 py-3 text-left text-slate-400 transition-colors hover:text-red-400"
+            onClick={() => {
+              logout();
+              setSidebarOpen(false);
+              navigate('/login', { replace: true });
+            }}
           >
             <span className="material-symbols-outlined text-error">logout</span>
             Logout
-          </Link>
+          </button>
         </div>
       </aside>
     </>

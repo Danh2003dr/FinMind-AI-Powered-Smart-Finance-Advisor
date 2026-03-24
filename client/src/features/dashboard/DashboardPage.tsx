@@ -1,22 +1,34 @@
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { getDashboardSummary } from '../../api/finance';
+import { useAuth } from '../../hooks/useAuth';
+import { formatCurrency } from '../../utils/formatCurrency';
 
-const txRows = [
-  { icon: 'shopping_bag', name: 'Apple Store', meta: 'Electronics • Today', amount: '-$1,299.00', neg: true },
-  { icon: 'payments', name: 'Client Salary', meta: 'Income • Yesterday', amount: '+$5,000.00', neg: false },
-  { icon: 'restaurant', name: 'Starbucks', meta: 'Food • Aug 24', amount: '-$12.50', neg: true },
-  { icon: 'flight', name: 'Delta Airlines', meta: 'Travel • Aug 22', amount: '-$450.00', neg: true },
-  { icon: 'subscriptions', name: 'Netflix Premium', meta: 'Entertainment • Aug 20', amount: '-$19.99', neg: true },
-] as const;
+function txIcon(category?: string) {
+  const c = (category ?? '').toLowerCase();
+  if (c.includes('ăn') || c.includes('food')) return 'restaurant';
+  if (c.includes('thu')) return 'payments';
+  if (c.includes('đi ') || c.includes('grab')) return 'commute';
+  return 'shopping_bag';
+}
 
 export function DashboardPage() {
+  const { user } = useAuth();
+  const { data, isPending, isError } = useQuery({
+    queryKey: ['dashboard', 'summary'],
+    queryFn: getDashboardSummary,
+  });
+
+  const displayCurrency = 'USD';
+
   return (
     <div className="relative pb-20">
       <div className="mb-10 flex flex-col justify-end gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-on-surface mb-1 text-3xl font-bold tracking-tight">Financial Overview</h2>
           <p className="text-on-surface-variant">
-            Welcome back, Alex. Your portfolio grew <span className="text-primary font-semibold">+2.4%</span>{' '}
-            today.
+            Xin chào, <span className="text-on-surface font-medium">{user?.name ?? 'bạn'}</span>. Dữ liệu
+            dưới đây lấy từ API (tháng hiện tại).
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -43,11 +55,17 @@ export function DashboardPage() {
               <p className="text-on-surface-variant mb-1 text-xs font-medium uppercase tracking-wider">
                 Current Balance
               </p>
-              <h3 className="text-primary text-glow text-4xl font-bold tracking-tight">$124,592.00</h3>
+              <h3 className="text-primary text-glow text-4xl font-bold tracking-tight">
+                {isPending
+                  ? '…'
+                  : isError
+                    ? '—'
+                    : formatCurrency(data?.currentBalance ?? 0, displayCurrency, 'en-US')}
+              </h3>
             </div>
             <div className="mt-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-sm">trending_up</span>
-              <span className="text-primary text-xs font-medium">+12% from last month</span>
+              <span className="text-primary text-xs font-medium">Tổng số dư tài khoản</span>
             </div>
           </div>
 
@@ -57,7 +75,11 @@ export function DashboardPage() {
                 <p className="text-on-surface-variant mb-1 text-xs font-medium uppercase tracking-wider">
                   Total Income
                 </p>
-                <h3 className="text-on-surface text-2xl font-semibold">$14,200.00</h3>
+                <h3 className="text-on-surface text-2xl font-semibold">
+                  {isPending
+                    ? '…'
+                    : formatCurrency(data?.totalIncome ?? 0, displayCurrency, 'en-US')}
+                </h3>
               </div>
               <div className="rounded-lg bg-primary/10 p-2">
                 <span className="material-symbols-outlined text-primary">arrow_downward</span>
@@ -74,7 +96,11 @@ export function DashboardPage() {
                 <p className="text-on-surface-variant mb-1 text-xs font-medium uppercase tracking-wider">
                   Total Expenses
                 </p>
-                <h3 className="text-on-surface text-2xl font-semibold">$8,450.00</h3>
+                <h3 className="text-on-surface text-2xl font-semibold">
+                  {isPending
+                    ? '…'
+                    : formatCurrency(data?.totalExpense ?? 0, displayCurrency, 'en-US')}
+                </h3>
               </div>
               <div className="rounded-lg bg-tertiary/10 p-2">
                 <span className="material-symbols-outlined text-tertiary">arrow_upward</span>
@@ -224,27 +250,41 @@ export function DashboardPage() {
             </Link>
           </div>
           <div className="space-y-4">
-            {txRows.map((row) => (
-              <div
-                key={row.name}
-                className="flex items-center justify-between rounded-lg p-3 transition-colors hover:bg-white/5"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="bg-surface-container-high flex h-10 w-10 items-center justify-center rounded-full">
-                    <span className="material-symbols-outlined text-primary">{row.icon}</span>
+            {isPending ? (
+              <p className="text-on-surface-variant text-sm">Đang tải…</p>
+            ) : isError ? (
+              <p className="text-error text-sm">Không tải được dữ liệu.</p>
+            ) : (data?.recentTransactions?.length ?? 0) === 0 ? (
+              <p className="text-on-surface-variant text-sm">Chưa có giao dịch. Thêm tại mục Giao dịch.</p>
+            ) : (
+              data!.recentTransactions.map((row) => {
+                const neg = row.amount < 0;
+                const cur = row.currency || displayCurrency;
+                const meta = `${row.category ?? 'Không phân loại'} • ${new Date(row.occurredAt).toLocaleDateString('vi-VN')}`;
+                return (
+                  <div
+                    key={row.id}
+                    className="flex items-center justify-between rounded-lg p-3 transition-colors hover:bg-white/5"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="bg-surface-container-high flex h-10 w-10 items-center justify-center rounded-full">
+                        <span className="material-symbols-outlined text-primary">{txIcon(row.category)}</span>
+                      </div>
+                      <div>
+                        <p className="text-on-surface text-sm font-medium">{row.description}</p>
+                        <p className="text-on-surface-variant text-[10px]">{meta}</p>
+                      </div>
+                    </div>
+                    <span
+                      className={`text-sm font-semibold ${neg ? 'text-error' : 'text-primary'}`}
+                    >
+                      {neg ? '' : '+'}
+                      {formatCurrency(row.amount, cur, cur === 'VND' ? 'vi-VN' : 'en-US')}
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-on-surface text-sm font-medium">{row.name}</p>
-                    <p className="text-on-surface-variant text-[10px]">{row.meta}</p>
-                  </div>
-                </div>
-                <span
-                  className={`text-sm font-semibold ${row.neg ? 'text-error' : 'text-primary'}`}
-                >
-                  {row.amount}
-                </span>
-              </div>
-            ))}
+                );
+              })
+            )}
           </div>
         </div>
 

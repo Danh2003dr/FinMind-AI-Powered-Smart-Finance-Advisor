@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { getBudgets, type BudgetDto } from '../../api/finance';
+import { formatCurrency } from '../../utils/formatCurrency';
 
 type CategoryTone = 'sky' | 'tertiary';
 type StatusKind = 'error' | 'success' | 'info' | 'critical';
@@ -18,72 +21,53 @@ type CategoryRow = {
   barVariant: BarVariant;
 };
 
-const CATEGORIES: CategoryRow[] = [
-  {
-    id: 'food',
-    title: 'Ăn uống',
-    subtitle: 'Thực phẩm, Nhà hàng, Coffee',
-    icon: 'restaurant',
-    tone: 'sky',
-    progressPct: 85,
-    spentLabel: '6.800.000',
-    capLabel: '8.000.000đ',
-    status: {
+function mapBudgetDto(b: BudgetDto, index: number): CategoryRow {
+  const cur = b.currency || 'VND';
+  const loc = cur === 'VND' ? 'vi-VN' : 'en-US';
+  const pct = b.progressPct;
+  const tone: CategoryTone = index % 2 === 0 ? 'sky' : 'tertiary';
+  let barVariant: BarVariant = 'solid';
+  let status: CategoryRow['status'];
+  if (pct >= 100) {
+    barVariant = 'over-limit';
+    status = {
+      kind: 'critical',
+      icon: 'error',
+      text: 'Đã vượt hoặc đạt hạn mức ngân sách',
+    };
+  } else if (pct >= 85) {
+    barVariant = 'near-limit';
+    status = {
       kind: 'error',
       icon: 'warning',
       text: 'Bạn đã tiêu gần hết ngân sách danh mục này',
-    },
-    barVariant: 'near-limit',
-  },
-  {
-    id: 'commute',
-    title: 'Di chuyển',
-    subtitle: 'Xăng xe, Grab, Bảo dưỡng',
-    icon: 'commute',
-    tone: 'tertiary',
-    progressPct: 42,
-    spentLabel: '1.260.000',
-    capLabel: '3.000.000đ',
-    status: {
+    };
+  } else if (pct >= 50) {
+    status = {
+      kind: 'info',
+      icon: 'info',
+      text: `Đã dùng ${pct}% hạn mức`,
+    };
+  } else {
+    status = {
       kind: 'success',
       icon: 'check_circle',
       text: 'Chi tiêu đang ở mức an toàn',
-    },
-    barVariant: 'solid',
-  },
-  {
-    id: 'shopping',
-    title: 'Shopping',
-    subtitle: 'Quần áo, Đồ điện tử, Mỹ phẩm',
-    icon: 'shopping_bag',
-    tone: 'sky',
-    progressPct: 60,
-    spentLabel: '3.000.000',
-    capLabel: '5.000.000đ',
-    status: {
-      kind: 'info',
-      icon: 'info',
-      text: 'Còn lại 2.000.000đ cho Shopping',
-    },
-    barVariant: 'solid',
-  },
-  {
-    id: 'fun',
-    title: 'Giải trí',
-    subtitle: 'Phim ảnh, Du lịch, Sự kiện',
-    icon: 'theater_comedy',
-    tone: 'tertiary',
-    progressPct: 94,
-    spentLabel: '3.760.000',
-    capLabel: '4.000.000đ',
-    status: {
-      kind: 'critical',
-      icon: 'error',
-      text: 'Cảnh báo: Sắp vượt ngưỡng giới hạn',
-    },
-    barVariant: 'over-limit',
-  },
-];
+    };
+  }
+  return {
+    id: b.id,
+    title: b.name,
+    subtitle: b.subtitle ?? b.categoryName ?? 'Ngân sách',
+    icon: b.icon || 'category',
+    tone,
+    progressPct: pct,
+    spentLabel: formatCurrency(b.spentAmount, cur, loc).replace(/\s/g, ''),
+    capLabel: formatCurrency(b.capAmount, cur, loc),
+    status,
+    barVariant,
+  };
+}
 
 function BudgetBarFill({ pct, variant }: { pct: number; variant: BarVariant }) {
   if (variant === 'solid') {
@@ -169,6 +153,27 @@ function CategoryCard({ row }: { row: CategoryRow }) {
 
 export function BudgetsPage() {
   const [month, setMonth] = useState('current');
+  const { data: budgets = [], isPending, isError } = useQuery({
+    queryKey: ['budgets'],
+    queryFn: getBudgets,
+  });
+
+  const rows = useMemo(() => budgets.map((b, i) => mapBudgetDto(b, i)), [budgets]);
+
+  const totals = useMemo(() => {
+    let cap = 0;
+    let spent = 0;
+    const cur = budgets[0]?.currency ?? 'VND';
+    for (const b of budgets) {
+      cap += b.capAmount;
+      spent += b.spentAmount;
+    }
+    const left = Math.max(0, cap - spent);
+    const overallPct = cap > 0 ? Math.round((spent / cap) * 100) : 0;
+    return { cap, spent, left, overallPct, cur };
+  }, [budgets]);
+
+  const loc = totals.cur === 'VND' ? 'vi-VN' : 'en-US';
 
   return (
     <div className="font-inter text-on-surface w-full min-w-0">
@@ -208,20 +213,27 @@ export function BudgetsPage() {
               <span className="mb-1 block text-xs font-semibold uppercase tracking-widest text-sky-300/60">
                 Tổng ngân sách
               </span>
-              <h3 className="text-3xl font-bold text-on-surface">25.000.000đ</h3>
+              <h3 className="text-3xl font-bold text-on-surface">
+                {isPending ? '…' : formatCurrency(totals.cap, totals.cur, loc)}
+              </h3>
             </div>
             <div className="mt-6 flex items-center gap-4">
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/5">
-                <div className="h-full w-[64%] bg-gradient-to-r from-sky-400 to-tertiary" />
+                <div
+                  className="h-full bg-gradient-to-r from-sky-400 to-tertiary"
+                  style={{ width: `${totals.overallPct}%` }}
+                />
               </div>
-              <span className="text-sm font-medium text-sky-300">64%</span>
+              <span className="text-sm font-medium text-sky-300">{totals.overallPct}%</span>
             </div>
           </div>
           <div className="glass-panel rounded-2xl p-6">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-widest text-on-surface-variant">
               Đã chi tiêu
             </span>
-            <h3 className="text-2xl font-bold text-on-surface">16.000.000đ</h3>
+            <h3 className="text-2xl font-bold text-on-surface">
+              {isPending ? '…' : formatCurrency(totals.spent, totals.cur, loc)}
+            </h3>
             <p className="mt-2 flex items-center gap-1 text-xs text-emerald-400">
               <span className="material-symbols-outlined text-xs">arrow_downward</span>
               12% so với tháng trước
@@ -231,15 +243,25 @@ export function BudgetsPage() {
             <span className="mb-1 block text-xs font-semibold uppercase tracking-widest text-on-surface-variant">
               Còn lại
             </span>
-            <h3 className="text-2xl font-bold text-on-surface">9.000.000đ</h3>
+            <h3 className="text-2xl font-bold text-on-surface">
+              {isPending ? '…' : formatCurrency(totals.left, totals.cur, loc)}
+            </h3>
             <p className="mt-2 text-xs text-on-surface-variant">Dự kiến đủ cho 12 ngày tới</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {CATEGORIES.map((row) => (
-            <CategoryCard key={row.id} row={row} />
-          ))}
+          {isPending ? (
+            <p className="text-on-surface-variant col-span-2 text-center">Đang tải ngân sách…</p>
+          ) : isError ? (
+            <p className="text-error col-span-2 text-center">Không tải được dữ liệu.</p>
+          ) : rows.length === 0 ? (
+            <p className="text-on-surface-variant col-span-2 text-center">
+              Chưa có ngân sách. Tạo qua API <code className="text-sky-300">POST /budgets</code> hoặc thêm form sau.
+            </p>
+          ) : (
+            rows.map((row) => <CategoryCard key={row.id} row={row} />)
+          )}
         </div>
 
         <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-3">

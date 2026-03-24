@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
+import { getMe, patchProfile } from '../../api/auth';
+import { useAuth } from '../../hooks/useAuth';
 
 const profileMainImg =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuD40QKRnQgcTqq0IJT5_8pxX5o17O_pmP8rjmeMO4xan-_6wOJpKkKWrED3_oE2N2NgXlo3YlgMm0GI7kJEryz30AzqkZxDprFMkg95O2f24rz-pRodpf99gnpPToBGwr-u4YxJo7LNS4kbvyKY40RDoBFUUImxm6iaxAruEIj8nASBf7At2sDD8tYP4zD4pXpf_ci39SQJwDlav7A2Tp3tiWTqE_RmZ1Wl28TOWF6veFqT9IlT--35IRD_fNEvO2UbGBT1JbD7iZSr';
@@ -11,10 +14,37 @@ function subNavClass(active: boolean) {
 }
 
 export function ProfilePage() {
-  const [fullName, setFullName] = useState('Alex Nguyen');
-  const [email, setEmail] = useState('alex.nguyen@finmind.app');
-  const [phone, setPhone] = useState('+84 90 123 4567');
+  const { token, login } = useAuth();
+  const qc = useQueryClient();
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [twoFa, setTwoFa] = useState(true);
+
+  const { data: me, isPending } = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: getMe,
+  });
+
+  useEffect(() => {
+    if (me) {
+      setFullName(me.name);
+      setEmail(me.email);
+      setPhone(me.phone ?? '');
+    }
+  }, [me]);
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      patchProfile({
+        displayName: fullName.trim(),
+        phone: phone.trim() || undefined,
+      }),
+    onSuccess: (u) => {
+      if (token) login(token, u);
+      void qc.invalidateQueries({ queryKey: ['auth', 'me'] });
+    },
+  });
 
   return (
     <div className="font-inter text-on-surface mx-auto flex w-full min-w-0 max-w-7xl flex-col gap-8 md:flex-row">
@@ -74,7 +104,9 @@ export function ProfilePage() {
             </div>
             <div className="relative flex-1 text-center md:text-left">
               <div className="mb-2 flex flex-col gap-3 md:flex-row md:items-center">
-                <h1 className="text-3xl font-bold tracking-tight text-on-surface">{fullName}</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-on-surface">
+                  {isPending ? '…' : fullName || me?.name}
+                </h1>
                 <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/20 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary">
                   <span className="material-symbols-outlined mr-1 text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
                     diamond
@@ -82,7 +114,7 @@ export function ProfilePage() {
                   Diamond Member
                 </span>
               </div>
-              <p className="text-on-surface-variant mb-6">{email}</p>
+              <p className="text-on-surface-variant mb-6">{isPending ? '…' : email}</p>
               <div className="flex flex-wrap justify-center gap-4 md:justify-start">
                 <button
                   type="button"
@@ -136,10 +168,11 @@ export function ProfilePage() {
                   Địa chỉ Email
                 </label>
                 <input
-                  className="border-outline-variant bg-surface-container/50 text-on-surface focus:border-primary focus:ring-primary/50 w-full rounded-xl border px-4 py-3 outline-none transition-all focus:ring-2"
+                  className="border-outline-variant bg-surface-container/30 text-on-surface-variant w-full cursor-not-allowed rounded-xl border px-4 py-3 outline-none"
                   type="email"
+                  readOnly
+                  title="Email không đổi từ trang hồ sơ"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -155,9 +188,11 @@ export function ProfilePage() {
               </div>
               <button
                 type="button"
-                className="text-on-primary bg-primary mt-2 w-full rounded-xl py-3 font-bold transition-all hover:shadow-[0_0_20px_rgba(125,211,252,0.3)] active:scale-95"
+                disabled={saveMut.isPending}
+                onClick={() => saveMut.mutate()}
+                className="text-on-primary bg-primary mt-2 w-full rounded-xl py-3 font-bold transition-all hover:shadow-[0_0_20px_rgba(125,211,252,0.3)] active:scale-95 disabled:opacity-60"
               >
-                Lưu thay đổi
+                {saveMut.isPending ? 'Đang lưu…' : 'Lưu thay đổi'}
               </button>
             </div>
           </div>

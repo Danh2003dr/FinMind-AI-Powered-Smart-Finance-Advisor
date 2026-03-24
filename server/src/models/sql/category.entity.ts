@@ -14,15 +14,12 @@ export class Category {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'nvarchar', length: 128 })
+  @Column({ type: 'varchar', length: 128 })
   name: string;
 
-  @ManyToOne(() => User, (u) => u.categories, {
-    onDelete: 'SET NULL',
-    nullable: true,
-  })
+  @ManyToOne(() => User, (u) => u.categories, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
-  user: User | null;
+  user: User;
 
   @OneToMany(() => Transaction, (t) => t.category)
   transactions: Transaction[];

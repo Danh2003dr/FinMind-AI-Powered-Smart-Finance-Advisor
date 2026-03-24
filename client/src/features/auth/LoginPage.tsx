@@ -1,5 +1,9 @@
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { postLogin, postRegister } from '../../api/auth';
+import { useAuth } from '../../hooks/useAuth';
+import { isAxiosError } from 'axios';
 
 const heroImage =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuAMXriIYyMmSGSLbeK1maznQTXW9pkATeRsWiWxkGZRVUDkYXfT5sNL3n_t3rv5rGuCsSaqQnGGl5RPu1LwSbPHxfABe63bp9vRV0jGhO1IkVPaxYWSWsK1rdsHHKgn9eSykymKAkNwiS6pIYopJeuLJjBzinE_73xJDlGwX9E6Igw7JFOwxZ-ycSmE7UIpGS4OJKXRD-UNCmqdSEqDiK0vAoboYvEJFrL8lnFao_GIbCYFCfHDwUtCogutisvXXJSoboEAnQ75xLf4';
@@ -35,12 +39,51 @@ function GitHubIcon() {
   );
 }
 
+function apiMessage(err: unknown): string {
+  if (isAxiosError(err)) {
+    const m = err.response?.data as { message?: string | string[] } | undefined;
+    if (typeof m?.message === 'string') return m.message;
+    if (Array.isArray(m?.message)) return m.message.join(', ');
+  }
+  return 'Có lỗi xảy ra. Thử lại.';
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
+  const { login, isAuthenticated } = useAuth();
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    navigate('/dashboard');
+    setError(null);
+    setLoading(true);
+    try {
+      if (mode === 'register') {
+        const res = await postRegister({
+          email: email.trim(),
+          password,
+          name: name.trim() || undefined,
+        });
+        login(res.accessToken, res.user);
+      } else {
+        const res = await postLogin({ email: email.trim(), password });
+        login(res.accessToken, res.user);
+      }
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      setError(apiMessage(err));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -99,7 +142,7 @@ export function LoginPage() {
               <p className="text-xs font-medium uppercase tracking-widest text-primary">
                 Trạng thái hệ thống
               </p>
-              <p className="text-sm text-on-surface">AI Engine: sẵn sàng</p>
+              <p className="text-sm text-on-surface">API + SQLite sẵn sàng</p>
             </div>
           </div>
         </div>
@@ -117,8 +160,12 @@ export function LoginPage() {
                   </span>
                 </div>
               </div>
-              <h2 className="text-3xl font-bold text-on-surface">Chào mừng trở lại</h2>
-              <p className="text-sm text-on-surface-variant">Đăng nhập để vào FinMind</p>
+              <h2 className="text-3xl font-bold text-on-surface">
+                {mode === 'login' ? 'Chào mừng trở lại' : 'Tạo tài khoản'}
+              </h2>
+              <p className="text-sm text-on-surface-variant">
+                {mode === 'login' ? 'Đăng nhập để vào FinMind' : 'Đăng ký — mật khẩu tối thiểu 8 ký tự'}
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -145,7 +192,29 @@ export function LoginPage() {
               </span>
             </div>
 
+            {error ? (
+              <p className="rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-center text-sm text-error">
+                {error}
+              </p>
+            ) : null}
+
             <form className="space-y-5" onSubmit={handleSubmit}>
+              {mode === 'register' ? (
+                <div className="space-y-2">
+                  <label className="ml-1 text-sm font-medium text-on-surface-variant" htmlFor="name">
+                    Tên hiển thị
+                  </label>
+                  <input
+                    id="name"
+                    type="text"
+                    value={name}
+                    onChange={(ev) => setName(ev.target.value)}
+                    placeholder="Nguyễn Văn A"
+                    className="glass-input w-full rounded-xl py-3 px-4 text-on-surface placeholder:text-on-surface-variant/40"
+                  />
+                </div>
+              ) : null}
+
               <div className="space-y-2">
                 <label
                   className="ml-1 text-sm font-medium text-on-surface-variant"
@@ -160,6 +229,9 @@ export function LoginPage() {
                   <input
                     id="email"
                     type="email"
+                    required
+                    value={email}
+                    onChange={(ev) => setEmail(ev.target.value)}
                     placeholder="name@example.com"
                     autoComplete="email"
                     className="glass-input w-full rounded-xl py-3 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant/40"
@@ -187,8 +259,12 @@ export function LoginPage() {
                   <input
                     id="password"
                     type="password"
+                    required
+                    minLength={mode === 'register' ? 8 : 1}
+                    value={password}
+                    onChange={(ev) => setPassword(ev.target.value)}
                     placeholder="••••••••"
-                    autoComplete="current-password"
+                    autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                     className="glass-input w-full rounded-xl py-3 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant/40"
                   />
                 </div>
@@ -196,23 +272,45 @@ export function LoginPage() {
 
               <button
                 type="submit"
-                className="mt-4 flex w-full transform items-center justify-center gap-2 rounded-xl bg-primary-container py-4 font-bold text-on-primary-container transition-all duration-300 hover:bg-primary hover:text-on-primary active:scale-[0.98]"
+                disabled={loading}
+                className="mt-4 flex w-full transform items-center justify-center gap-2 rounded-xl bg-primary-container py-4 font-bold text-on-primary-container transition-all duration-300 hover:bg-primary hover:text-on-primary active:scale-[0.98] disabled:opacity-60"
               >
-                Đăng nhập
+                {loading ? 'Đang xử lý…' : mode === 'login' ? 'Đăng nhập' : 'Đăng ký'}
                 <span className="material-symbols-outlined text-lg">arrow_forward</span>
               </button>
             </form>
 
             <div className="pt-4 text-center">
               <p className="text-sm text-on-surface-variant">
-                Chưa có tài khoản?{' '}
-                <a
-                  className="font-semibold text-primary decoration-primary/30 underline-offset-4 hover:underline"
-                  href="#"
-                  onClick={(ev) => ev.preventDefault()}
-                >
-                  Tạo tài khoản FinMind
-                </a>
+                {mode === 'login' ? (
+                  <>
+                    Chưa có tài khoản?{' '}
+                    <button
+                      type="button"
+                      className="font-semibold text-primary decoration-primary/30 underline-offset-4 hover:underline"
+                      onClick={() => {
+                        setMode('register');
+                        setError(null);
+                      }}
+                    >
+                      Tạo tài khoản FinMind
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Đã có tài khoản?{' '}
+                    <button
+                      type="button"
+                      className="font-semibold text-primary underline-offset-4 hover:underline"
+                      onClick={() => {
+                        setMode('login');
+                        setError(null);
+                      }}
+                    >
+                      Đăng nhập
+                    </button>
+                  </>
+                )}
               </p>
             </div>
 

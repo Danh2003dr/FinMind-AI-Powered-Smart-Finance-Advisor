@@ -1,5 +1,8 @@
-import { useState, type HTMLAttributes } from 'react';
+import { useMemo, useState, type HTMLAttributes } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { getTransactions, type TransactionDto } from '../../api/finance';
+import { formatCurrency } from '../../utils/formatCurrency';
 
 type TxStatus = 'completed' | 'pending';
 
@@ -18,50 +21,40 @@ type TxRow = {
   method: { type: 'card' | 'bank'; label: string };
 };
 
-const TABLE_ROWS: TxRow[] = [
-  {
-    id: '1',
-    dateLine: 'Oct 24, 2023',
-    time: '14:32 PM',
-    title: 'Apple Store - iPhone 15 Pro',
-    category: 'Electronics',
-    amount: '-$1,250.00',
-    amountNote: 'Fee: $0.00',
-    negative: true,
-    status: 'completed',
-    icon: 'shopping_bag',
-    iconCellClass: 'rounded-xl border border-sky-400/10 bg-slate-800 text-sky-300',
-    method: { type: 'card', label: 'Visa •••• 4242' },
-  },
-  {
-    id: '2',
-    dateLine: 'Oct 22, 2023',
-    time: '09:15 AM',
-    title: 'Salary Deposit - ACME Corp',
-    category: 'Monthly Income',
-    amount: '+$4,500.00',
-    amountNote: 'Tax inclusive',
-    negative: false,
-    status: 'completed',
-    icon: 'payments',
-    iconCellClass: 'rounded-xl border border-sky-400/10 bg-sky-400/10 text-sky-300',
-    method: { type: 'bank', label: 'Direct Deposit' },
-  },
-  {
-    id: '3',
-    dateLine: 'Oct 21, 2023',
-    time: '19:45 PM',
-    title: 'The Blue Lobster',
-    category: 'Dining',
-    amount: '-$245.80',
-    amountNote: 'Incl. 15% Tip',
-    negative: true,
-    status: 'pending',
-    icon: 'restaurant',
-    iconCellClass: 'rounded-xl border border-sky-400/10 bg-slate-800 text-sky-300',
-    method: { type: 'card', label: 'Mastercard •••• 88' },
-  },
-];
+function mapTransaction(t: TransactionDto): TxRow {
+  const d = new Date(t.occurredAt);
+  const negative = t.amount < 0;
+  const cur = t.currency || 'USD';
+  const loc = cur === 'VND' ? 'vi-VN' : 'en-US';
+  const cat = (t.category ?? '').toLowerCase();
+  let icon = 'shopping_bag';
+  let iconCellClass = 'rounded-xl border border-sky-400/10 bg-slate-800 text-sky-300';
+  if (cat.includes('thu') || t.amount > 0) {
+    icon = 'payments';
+    iconCellClass = 'rounded-xl border border-sky-400/10 bg-sky-400/10 text-sky-300';
+  } else if (cat.includes('ăn') || cat.includes('food')) {
+    icon = 'restaurant';
+  }
+  const sign = negative ? '-' : '+';
+  const absAmt = formatCurrency(Math.abs(t.amount), cur, loc);
+  return {
+    id: t.id,
+    dateLine: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    title: t.description,
+    category: t.category ?? '—',
+    amount: `${sign}${absAmt}`,
+    amountNote: negative ? 'Chi tiêu' : 'Thu nhập',
+    negative,
+    status: t.status === 'pending' ? 'pending' : 'completed',
+    icon,
+    iconCellClass,
+    method: {
+      type: t.methodType === 'bank' ? 'bank' : 'card',
+      label: t.methodLabel ?? '—',
+    },
+  };
+}
 
 function MethodCell({ method }: { method: TxRow['method'] }) {
   const icon = method.type === 'card' ? 'credit_card' : 'account_balance';
@@ -100,6 +93,55 @@ function TxGlass({ className = '', ...props }: HTMLAttributes<HTMLDivElement>) {
 
 export function TransactionsPage() {
   const [keyword, setKeyword] = useState('');
+  const { data: raw = [], isPending, isError } = useQuery({
+    queryKey: ['transactions'],
+    queryFn: () => getTransactions(),
+  });
+
+  const rows = useMemo(() => {
+    const mapped = raw.map(mapTransaction);
+    const k = keyword.trim().toLowerCase();
+    if (!k) return mapped;
+    return mapped.filter(
+      (r) =>
+        r.title.toLowerCase().includes(k) ||
+        r.category.toLowerCase().includes(k),
+    );
+  }, [raw, keyword]);
+
+  const monthSpend = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    let s = 0;
+    let max = 0;
+    let maxTitle = '—';
+    for (const t of raw) {
+      const d = new Date(t.occurredAt);
+      if (d < start) continue;
+      if (t.amount < 0) {
+        s += Math.abs(t.amount);
+        if (Math.abs(t.amount) > max) {
+          max = Math.abs(t.amount);
+          maxTitle = t.description;
+        }
+      }
+    }
+    return { spend: s, largest: max, largestTitle: maxTitle };
+  }, [raw]);
+
+  const surplus = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    let inc = 0;
+    let exp = 0;
+    for (const t of raw) {
+      const d = new Date(t.occurredAt);
+      if (d < start) continue;
+      if (t.amount >= 0) inc += t.amount;
+      else exp += Math.abs(t.amount);
+    }
+    return inc - exp;
+  }, [raw]);
 
   return (
     <div className="font-inter text-on-surface w-full min-w-0">
@@ -139,7 +181,9 @@ export function TransactionsPage() {
             <span className="material-symbols-outlined text-5xl">payments</span>
           </div>
           <div className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-400">Monthly Spend</div>
-          <div className="mb-1 text-3xl font-bold text-white">$4,820.50</div>
+          <div className="mb-1 text-3xl font-bold text-white">
+            {isPending ? '…' : formatCurrency(monthSpend.spend, 'USD', 'en-US')}
+          </div>
           <div className="text-error flex items-center gap-1 text-xs font-medium">
             <span className="material-symbols-outlined text-sm">trending_up</span>
             <span>12% from last month</span>
@@ -150,12 +194,14 @@ export function TransactionsPage() {
             <span className="material-symbols-outlined text-5xl">shopping_cart</span>
           </div>
           <div className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-400">Largest Transaction</div>
-          <div className="mb-1 text-3xl font-bold text-white">$1,250.00</div>
+          <div className="mb-1 text-3xl font-bold text-white">
+            {isPending ? '…' : formatCurrency(monthSpend.largest, 'USD', 'en-US')}
+          </div>
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <span className="rounded-lg border border-sky-400/10 bg-white/5 px-2 py-0.5 font-medium tracking-tight text-sky-300">
-              Apple Store
+              {monthSpend.largestTitle}
             </span>
-            <span>Electronics</span>
+            <span>Tháng này</span>
           </div>
         </TxGlass>
         <TxGlass className="group relative overflow-hidden p-6">
@@ -163,7 +209,9 @@ export function TransactionsPage() {
             <span className="material-symbols-outlined text-5xl">savings</span>
           </div>
           <div className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-400">Cash Flow Surplus</div>
-          <div className="mb-1 text-3xl font-bold text-sky-300">+$2,140.20</div>
+          <div className="mb-1 text-3xl font-bold text-sky-300">
+            {isPending ? '…' : `${surplus >= 0 ? '+' : ''}${formatCurrency(surplus, 'USD', 'en-US')}`}
+          </div>
           <div className="flex items-center gap-1 text-xs font-medium text-sky-300">
             <span className="material-symbols-outlined text-sm">trending_down</span>
             <span>Spend decreased by 4%</span>
@@ -244,7 +292,27 @@ export function TransactionsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-sky-400/5">
-              {TABLE_ROWS.map((row) => (
+              {isPending ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                    Đang tải…
+                  </td>
+                </tr>
+              ) : isError ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-error">
+                    Không tải được giao dịch.
+                  </td>
+                </tr>
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                    Chưa có giao dịch. Đăng ký tài khoản mới sẽ có danh mục mặc định — thêm giao dịch qua API hoặc
+                    tính năng (sắp tới).
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row) => (
                 <tr key={row.id} className="transition-colors hover:bg-sky-400/[0.03]">
                   <td className="whitespace-nowrap px-6 py-4">
                     <div className="text-sm font-medium text-white">{row.dateLine}</div>
@@ -287,7 +355,8 @@ export function TransactionsPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -295,7 +364,7 @@ export function TransactionsPage() {
 
       <div className="flex flex-col items-center justify-between gap-4 py-2 sm:flex-row">
         <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-          Showing <span className="text-sky-300">1 to 10</span> of 248 transactions
+          Hiển thị <span className="text-sky-300">{rows.length}</span> giao dịch
         </div>
         <div className="flex items-center gap-2">
           <button

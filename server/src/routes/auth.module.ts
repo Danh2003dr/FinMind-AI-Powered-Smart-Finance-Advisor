@@ -2,11 +2,18 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import type { SignOptions } from 'jsonwebtoken';
+import { AuthController } from '../controllers/auth.controller';
+import { Category } from '../models/sql/category.entity';
+import { Notification } from '../models/sql/notification.entity';
+import { User } from '../models/sql/user.entity';
 import { JwtStrategy } from '../middlewares/jwt.strategy';
+import { AuthService } from '../services/auth.service';
 
 @Module({
   imports: [
+    TypeOrmModule.forFeature([User, Category, Notification]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       global: true,
@@ -21,7 +28,8 @@ import { JwtStrategy } from '../middlewares/jwt.strategy';
       }),
     }),
   ],
-  providers: [JwtStrategy],
-  exports: [JwtModule, PassportModule],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy],
+  exports: [JwtModule, PassportModule, AuthService],
 })
 export class AuthModule {}

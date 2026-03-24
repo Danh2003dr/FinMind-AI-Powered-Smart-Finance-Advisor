@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react';
 
-function getStorageKey(key: string) {
+/** Dùng chung với api client (Bearer) — phải khớp khóa localStorage. */
+export function finmindStorageKey(key: string) {
   return `finmind:${key}`;
 }
 
 function read<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(getStorageKey(key));
+    const raw = localStorage.getItem(finmindStorageKey(key));
     if (raw == null) return fallback;
     return JSON.parse(raw) as T;
   } catch {
@@ -23,7 +24,7 @@ export function useLocalStorage<T>(key: string, initial: T) {
         const resolved =
           typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
         try {
-          localStorage.setItem(getStorageKey(key), JSON.stringify(resolved));
+          localStorage.setItem(finmindStorageKey(key), JSON.stringify(resolved));
         } catch {
           /* quota / private mode */
         }

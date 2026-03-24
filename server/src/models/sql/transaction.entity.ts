@@ -19,11 +19,20 @@ export class Transaction {
   @Column({ type: 'varchar', length: 8, default: 'VND' })
   currency: string;
 
-  @Column({ type: 'nvarchar', length: 512 })
+  @Column({ type: 'varchar', length: 512 })
   description: string;
 
-  @Column({ name: 'occurred_at', type: 'datetime2' })
+  @Column({ name: 'occurred_at', type: 'datetime' })
   occurredAt: Date;
+
+  @Column({ type: 'varchar', length: 16, default: 'completed' })
+  status: string;
+
+  @Column({ name: 'method_type', type: 'varchar', length: 16, nullable: true })
+  methodType: string | null;
+
+  @Column({ name: 'method_label', type: 'varchar', length: 128, nullable: true })
+  methodLabel: string | null;
 
   @ManyToOne(() => User, (u) => u.transactions, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })

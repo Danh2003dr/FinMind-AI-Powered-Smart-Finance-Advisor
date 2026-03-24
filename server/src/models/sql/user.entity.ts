@@ -13,16 +13,19 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
+  @Column({ type: 'varchar', length: 255, unique: true })
   email: string;
 
-  @Column({ name: 'password_hash' })
+  @Column({ name: 'password_hash', type: 'varchar', length: 255 })
   passwordHash: string;
 
-  @Column({ name: 'display_name', nullable: true })
+  @Column({ name: 'display_name', type: 'varchar', length: 120, nullable: true })
   displayName: string | null;
 
-  @CreateDateColumn({ name: 'created_at', type: 'datetime2' })
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  phone: string | null;
+
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
   @OneToMany(() => Transaction, (t) => t.user)

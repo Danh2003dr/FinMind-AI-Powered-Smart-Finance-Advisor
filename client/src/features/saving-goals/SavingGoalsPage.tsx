@@ -1,4 +1,8 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { getSavingGoals, type SavingGoalDto } from '../../api/finance';
+import { formatCurrency } from '../../utils/formatCurrency';
 
 const bentoImg =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuAAqruTq95aHHCWFEIAnYHYTbKJ3Hq4TUEKx5NSdgRCYe2ClWNkqK2xFhXsrJXATJS8iQVLGEJaIsiss3V8mJ7TF-i66WqKOtlT9nQvtgwDTUBINUqGQiX8_jp5uEonTgefGkCI6ok6gKHjZzz33xeD8CQojY_oyJEtZ17c0Qp_femafC5alf2KlQgipKBFnBXIXenAc1OjpRB2adNlR-ALAlRyDglMFg0o5163o74BlGT4RruBB_Duq92mout_EuS6TY8S9LVYkX0e';
@@ -23,57 +27,50 @@ type GoalDef = {
   sparkAccent: 'primary' | 'tertiary' | 'secondary';
 };
 
-const GOALS: GoalDef[] = [
-  {
-    id: 'car',
-    accent: 'primary',
-    icon: 'directions_car',
-    badge: 'Ưu tiên cao',
-    badgeClass: 'text-primary bg-primary/10',
-    dateLabel: 'Dự kiến: 20/08/2024',
-    title: 'Mua xe',
-    subtitle: 'VinFast VF8 - Eco Blue Edition',
-    progressPct: 65,
-    progressRight: '780.000.000 / 1.2B',
-    progressBarClass: 'bg-primary progress-glow',
-    hoverBorder: 'hover:border-primary/40',
-    sparkHeights: ['h-3', 'h-5', 'h-4', 'h-7', 'h-6'],
-    sparkAccent: 'primary',
-  },
-  {
-    id: 'emergency',
-    accent: 'tertiary',
-    icon: 'emergency',
-    badge: 'An toàn',
-    badgeClass: 'text-tertiary bg-tertiary/10',
-    dateLabel: 'Dự kiến: 15/06/2024',
-    title: 'Quỹ khẩn cấp',
-    subtitle: 'Dự phòng chi phí sinh hoạt 6 tháng',
-    progressPct: 92,
-    progressRight: '276.000.000 / 300M',
-    progressBarClass: 'bg-tertiary',
-    barShadow: 'shadow-[0_0_15px_rgba(200,160,240,0.3)]',
-    hoverBorder: 'hover:border-tertiary/40',
-    sparkHeights: ['h-6', 'h-7', 'h-8', 'h-6', 'h-7'],
-    sparkAccent: 'tertiary',
-  },
-  {
-    id: 'travel',
-    accent: 'secondary',
-    icon: 'flight_takeoff',
-    badge: 'Phong cách sống',
-    badgeClass: 'text-secondary bg-secondary/10',
-    dateLabel: 'Dự kiến: 12/12/2024',
-    title: 'Du lịch',
-    subtitle: 'Khám phá Tokyo & Kyoto - Nhật Bản',
-    progressPct: 15,
-    progressRight: '22.500.000 / 150M',
-    progressBarClass: 'bg-secondary',
-    hoverBorder: 'hover:border-primary/40',
-    sparkHeights: ['h-2', 'h-3', 'h-5', 'h-4', 'h-6'],
-    sparkAccent: 'secondary',
-  },
-];
+function mapSavingGoal(d: SavingGoalDto, i: number): GoalDef {
+  const accents: Accent[] = ['primary', 'tertiary', 'secondary'];
+  const accent = accents[i % 3]!;
+  const badge = d.badge ?? 'Mục tiêu';
+  const badgeClass =
+    accent === 'primary'
+      ? 'text-primary bg-primary/10'
+      : accent === 'tertiary'
+        ? 'text-tertiary bg-tertiary/10'
+        : 'text-secondary bg-secondary/10';
+  const dateLabel = d.targetDate
+    ? `Dự kiến: ${new Date(d.targetDate).toLocaleDateString('vi-VN')}`
+    : 'Chưa đặt hạn';
+  const cur = 'VND';
+  const progressRight = `${formatCurrency(d.currentAmount, cur, 'vi-VN')} / ${formatCurrency(d.targetAmount, cur, 'vi-VN')}`;
+  const progressBarClass =
+    accent === 'primary'
+      ? 'bg-primary progress-glow'
+      : accent === 'tertiary'
+        ? 'bg-tertiary'
+        : 'bg-secondary';
+  const barShadow =
+    accent === 'tertiary' ? 'shadow-[0_0_15px_rgba(200,160,240,0.3)]' : undefined;
+  const hoverBorder =
+    accent === 'tertiary' ? 'hover:border-tertiary/40' : 'hover:border-primary/40';
+  const sparkHeights = ['h-3', 'h-5', 'h-4', 'h-7', 'h-6'];
+  return {
+    id: d.id,
+    accent,
+    icon: d.icon,
+    badge,
+    badgeClass,
+    dateLabel,
+    title: d.title,
+    subtitle: d.subtitle ?? '',
+    progressPct: d.progressPct,
+    progressRight,
+    progressBarClass,
+    barShadow,
+    hoverBorder,
+    sparkHeights,
+    sparkAccent: accent,
+  };
+}
 
 function sparkBarClass(i: number, total: number, accent: GoalDef['sparkAccent'], heights: string[]) {
   const h = heights[i] ?? 'h-4';
@@ -196,6 +193,17 @@ const ACTIVITY = [
 ];
 
 export function SavingGoalsPage() {
+  const { data: goals = [], isPending, isError } = useQuery({
+    queryKey: ['saving-goals'],
+    queryFn: getSavingGoals,
+  });
+  const mapped = useMemo(() => goals.map((g, i) => mapSavingGoal(g, i)), [goals]);
+  const totalSaved = useMemo(
+    () => goals.reduce((s, g) => s + g.currentAmount, 0),
+    [goals],
+  );
+  const nearDone = useMemo(() => goals.filter((g) => g.progressPct >= 80).length, [goals]);
+
   return (
     <div className="font-inter text-on-surface relative w-full min-w-0 pb-20 md:pb-8">
       <header className="mb-10 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -219,8 +227,14 @@ export function SavingGoalsPage() {
           <div className="absolute -right-16 -top-16 h-32 w-32 rounded-full bg-primary/5 blur-3xl transition-colors group-hover:bg-primary/10" />
           <p className="text-on-surface-variant mb-1 text-sm font-medium">Tổng tiết kiệm</p>
           <h3 className="text-on-surface text-2xl font-bold">
-            1.240.000.000{' '}
-            <span className="ml-1 text-xs font-normal uppercase tracking-wider text-primary">VND</span>
+            {isPending ? (
+              '…'
+            ) : (
+              <>
+                {formatCurrency(totalSaved, 'VND', 'vi-VN')}{' '}
+                <span className="ml-1 text-xs font-normal uppercase tracking-wider text-primary">VND</span>
+              </>
+            )}
           </h3>
           <div className="mt-4 flex items-center gap-2 text-xs text-emerald-400">
             <span className="material-symbols-outlined text-sm">trending_up</span>
@@ -230,10 +244,10 @@ export function SavingGoalsPage() {
         <div className="glass-card group relative overflow-hidden rounded-2xl p-6">
           <div className="absolute -right-16 -top-16 h-32 w-32 rounded-full bg-tertiary/5 blur-3xl transition-colors group-hover:bg-tertiary/10" />
           <p className="text-on-surface-variant mb-1 text-sm font-medium">Mục tiêu đang thực hiện</p>
-          <h3 className="text-on-surface text-2xl font-bold">08</h3>
+          <h3 className="text-on-surface text-2xl font-bold">{isPending ? '…' : String(goals.length).padStart(2, '0')}</h3>
           <div className="text-on-surface-variant mt-4 flex items-center gap-2 text-xs">
             <span className="material-symbols-outlined text-sm">flag</span>
-            <span>2 mục tiêu sắp hoàn thành</span>
+            <span>{nearDone} mục tiêu tiến độ ≥ 80%</span>
           </div>
         </div>
         <div className="glass-card group relative overflow-hidden rounded-2xl p-6">
@@ -251,9 +265,17 @@ export function SavingGoalsPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-        {GOALS.map((g) => (
-          <GoalCard key={g.id} goal={g} />
-        ))}
+        {isPending ? (
+          <p className="text-on-surface-variant col-span-full text-center">Đang tải mục tiêu…</p>
+        ) : isError ? (
+          <p className="text-error col-span-full text-center">Không tải được dữ liệu.</p>
+        ) : mapped.length === 0 ? (
+          <p className="text-on-surface-variant col-span-full text-center">
+            Chưa có mục tiêu. Tạo qua <code className="text-primary">POST /saving-goals</code>.
+          </p>
+        ) : (
+          mapped.map((g) => <GoalCard key={g.id} goal={g} />)
+        )}
 
         <div className="glass-card border-primary/20 from-surface to-surface-container-high relative flex flex-col items-center gap-8 rounded-3xl border bg-gradient-to-br p-8 md:flex-row lg:col-span-2 xl:col-span-3">
           <div className="pointer-events-none absolute inset-0 overflow-hidden">

@@ -1,4 +1,11 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import {
+  deleteNotification,
+  getNotifications,
+  markNotificationRead,
+  type NotificationDto,
+} from '../../api/finance';
 
 type FilterTab = 'all' | 'ai' | 'budget' | 'security';
 type NotifCategory = 'ai' | 'budget' | 'security' | 'report';
@@ -18,59 +25,44 @@ type NotifItem = {
   showMarkRead?: boolean;
 };
 
-const SEED: NotifItem[] = [
-  {
-    id: '1',
-    category: 'ai',
-    title: 'Thông báo AI: Cơ hội đầu tư mới',
-    time: '2 giờ trước',
-    body:
-      'Dựa trên xu hướng chi tiêu của bạn, AI đã phát hiện một cơ hội tiết kiệm 15% vào quỹ nghỉ hưu thông qua tối ưu hóa danh mục.',
-    icon: 'auto_awesome',
-    iconFill: true,
-    iconWrap: 'bg-primary-container text-primary shadow-inner',
-    borderLeft: 'border-l-4 border-l-primary',
-    tags: [
-      { label: 'Mới', className: 'bg-primary/10 text-primary' },
-      { label: 'Ưu tiên cao', className: 'bg-tertiary/10 text-tertiary' },
-    ],
-    unread: true,
-    showMarkRead: true,
-  },
-  {
-    id: '2',
-    category: 'budget',
-    title: 'Cảnh báo ngân sách: Ăn uống',
-    time: '5 giờ trước',
-    body:
-      'Bạn đã sử dụng 85% hạn mức ngân sách cho mục "Ăn uống" trong tháng này. Hãy cân nhắc điều chỉnh chi tiêu.',
-    icon: 'wallet',
-    iconFill: true,
-    iconWrap: 'bg-tertiary-container text-tertiary',
-  },
-  {
-    id: '3',
-    category: 'security',
-    title: 'Cảnh báo bảo mật',
-    time: 'Hôm qua',
-    body:
-      'Phát hiện lần đăng nhập mới từ thiết bị lạ tại TP. Hồ Chí Minh. Nếu không phải là bạn, hãy đổi mật khẩu ngay lập tức.',
-    icon: 'shield',
-    iconFill: true,
-    iconWrap: 'bg-error-container text-error',
-    borderLeft: 'border-l-4 border-l-error/50',
-  },
-  {
-    id: '4',
-    category: 'report',
-    title: 'Báo cáo tuần đã sẵn sàng',
-    time: '2 ngày trước',
-    body:
-      'Tổng kết tuần qua: Thu nhập của bạn tăng 12% so với tuần trước. Xem chi tiết báo cáo để biết thêm.',
-    icon: 'monitoring',
-    iconWrap: 'bg-secondary-container text-secondary',
-  },
-];
+function mapDto(d: NotificationDto): NotifItem {
+  const rawCat = d.category;
+  const category: NotifCategory =
+    rawCat === 'ai' || rawCat === 'budget' || rawCat === 'security' || rawCat === 'report'
+      ? rawCat
+      : 'report';
+  const icons: Record<string, string> = {
+    ai: 'auto_awesome',
+    budget: 'wallet',
+    security: 'shield',
+    report: 'monitoring',
+    info: 'notifications',
+  };
+  const wraps: Record<string, string> = {
+    ai: 'bg-primary-container text-primary shadow-inner',
+    budget: 'bg-tertiary-container text-tertiary',
+    security: 'bg-error-container text-error',
+    report: 'bg-secondary-container text-secondary',
+    info: 'bg-surface-container-high text-on-surface',
+  };
+  const borders: Record<string, string> = {
+    ai: 'border-l-4 border-l-primary',
+    security: 'border-l-4 border-l-error/50',
+  };
+  return {
+    id: d.id,
+    category,
+    title: d.title,
+    time: new Date(d.createdAt).toLocaleString('vi-VN'),
+    body: d.body,
+    icon: icons[rawCat] ?? 'notifications',
+    iconFill: rawCat === 'ai',
+    iconWrap: wraps[rawCat] ?? wraps.info!,
+    borderLeft: borders[rawCat],
+    unread: !d.isRead,
+    showMarkRead: !d.isRead,
+  };
+}
 
 const FILTER_TABS: { id: FilterTab; label: string; icon?: string }[] = [
   { id: 'all', label: 'Tất cả' },
@@ -89,21 +81,40 @@ function matchesFilter(item: NotifItem, tab: FilterTab) {
 
 export function NotificationsPage() {
   const [filter, setFilter] = useState<FilterTab>('all');
-  const [items, setItems] = useState<NotifItem[]>(SEED);
   const [prefs, setPrefs] = useState({ ai: true, budget: true, security: true });
+  const qc = useQueryClient();
+
+  const { data: raw = [], isPending, isError } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: getNotifications,
+  });
+
+  const items = useMemo(() => raw.map(mapDto), [raw]);
 
   const visible = useMemo(() => items.filter((n) => matchesFilter(n, filter)), [items, filter]);
 
-  function markAllRead() {
-    setItems((prev) => prev.map((n) => ({ ...n, unread: false })));
+  const markReadMut = useMutation({
+    mutationFn: markNotificationRead,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const removeMut = useMutation({
+    mutationFn: deleteNotification,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  async function markAllRead() {
+    const unread = raw.filter((n) => !n.isRead);
+    await Promise.all(unread.map((n) => markNotificationRead(n.id)));
+    await qc.invalidateQueries({ queryKey: ['notifications'] });
   }
 
   function markRead(id: string) {
-    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)));
+    markReadMut.mutate(id);
   }
 
   function remove(id: string) {
-    setItems((prev) => prev.filter((n) => n.id !== id));
+    removeMut.mutate(id);
   }
 
   return (
@@ -150,7 +161,11 @@ export function NotificationsPage() {
         </div>
 
         <div className="space-y-3">
-          {visible.length === 0 ? (
+          {isPending ? (
+            <p className="text-on-surface-variant text-sm">Đang tải thông báo…</p>
+          ) : isError ? (
+            <p className="text-error text-sm">Không tải được thông báo.</p>
+          ) : visible.length === 0 ? (
             <p className="text-on-surface-variant text-sm">Không có thông báo trong mục này.</p>
           ) : (
             visible.map((n) => (

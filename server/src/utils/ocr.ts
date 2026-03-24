@@ -1,18 +1,17 @@
 /**
- * Chuẩn hoá text thô từ OCR trước khi parse (stub — thay bằng pipeline thật).
+ * Chuẩn hoá một dòng OCR (khoảng trắng thừa trong dòng).
  */
-export function normalizeOcrText(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim();
+export function normalizeOcrLine(line: string): string {
+  return line.replace(/\s+/g, ' ').trim();
 }
 
 export function stubParseReceiptLines(raw: string): { lines: string[] } {
-  const text = normalizeOcrText(raw);
+  const text = raw.trim();
+  if (!text) return { lines: [] };
   return {
     lines: text
-      ? text
-          .split('\n')
-          .map((l) => l.trim())
-          .filter(Boolean)
-      : [],
+      .split(/\r?\n/)
+      .map((l) => normalizeOcrLine(l))
+      .filter(Boolean),
   };
 }
