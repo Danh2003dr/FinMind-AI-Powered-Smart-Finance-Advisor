@@ -1,0 +1,54 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: finmind-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-YourStrong@Passw0rd}
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+
+  mongodb:
+    image: mongo:7
+    container_name: finmind-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: finmind
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: finmind-api
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      # Kết nối từ container tới SQL Server (đổi password nếu dùng biến khác)
+      DATABASE_URL: "mssql://sa:${MSSQL_SA_PASSWORD:-YourStrong@Passw0rd}@sqlserver:1433/finmind?encrypt=true&trustServerCertificate=true"
+      MONGODB_URI: mongodb://mongodb:27017/finmind
+    depends_on:
+      - sqlserver
+      - mongodb
+
+  web:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:3000
+    container_name: finmind-web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  sqlserver_data:
+  mongo_data:

@@ -1,0 +1,32 @@
+# Dependencies & build
+node_modules/
+dist/
+dist-ssr/
+build/
+*.local
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs & coverage
+logs/
+*.log
+npm-debug.log*
+coverage/
+.nyc_output/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Misc
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
