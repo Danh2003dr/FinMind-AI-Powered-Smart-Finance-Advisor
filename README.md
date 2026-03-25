@@ -1,66 +1,141 @@
-# FinMind — Smart Finance Advisor
+# FinMind — AI-Powered Smart Finance Advisor
 
-Monorepo: React + TypeScript (client), NestJS (server), tuỳ chọn Python (ai-engine), cơ sở dữ liệu SQL Server và MongoDB qua Docker.
+Monorepo gồm **Frontend (React/TypeScript)** và **Backend (NestJS/TypeORM)**. Ứng dụng có luồng **quét hoá đơn (OCR) → xác nhận → tạo giao dịch** và **AI Advisor** để hỗ trợ gợi ý tài chính.
 
-## Cấu trúc
+## Demo
+
+> GIF demo: thêm file `docs/demo.gif` (quay luồng: Login → Dashboard → Transactions → Scan OCR → Lưu giao dịch).
+>
+> Nếu chưa có GIF, bạn có thể bỏ dòng dưới hoặc thay bằng ảnh/GIF khác.
+
+<!-- eslint-disable-next-line -->
+<!-- markdownlint-disable-next-line -->
+![FinMind demo](docs/demo.gif)
+
+**Live Demo:** https://<your-live-demo-link>
+
+## Tóm tắt sản phẩm
+
+- **Auth & Profile:** Đăng ký/Đăng nhập (JWT), cập nhật hồ sơ.
+- **Tài chính:** Dashboard/summary, danh mục, giao dịch (list/create/update/delete + lọc), ngân sách, mục tiêu tiết kiệm, notifications.
+- **Receipt Scanner (OCR):** OCR ảnh hoá đơn bằng client-side pipeline (tiền xử lý ảnh + xoay nhiều góc + Tesseract) + heuristics VN → người dùng xác nhận → gọi API để lưu giao dịch.
+- **AI Advisor:** Chat với AI (Gemini) thông qua endpoint backend.
+
+## Tech Stack
+
+- **Client:** React 19, TypeScript, Vite, React Router, React Query, Axios, Tailwind, Tesseract.js (OCR).
+- **Server:** NestJS, TypeORM, SQLite (mặc định) / MSSQL (tuỳ chọn), JWT + Passport, class-validator/class-transformer.
+- **AI:** Gemini API (server-side).
+- **DevOps:** Docker (build/run), GitHub Actions CI/CD.
+
+## Kiến trúc hệ thống
+
+```mermaid
+flowchart LR
+  U[Người dùng] --> W[React App (client)]
+  W -->|HTTP + Bearer JWT| A[NestJS API (server)]
+
+  W -->|Ảnh hoá đơn| OCR[OCR Pipeline (client)]
+  OCR -->|Text + heuristics| W
+  W -->|POST /ocr/receipts/parse (text)| A
+
+  A -->|TypeORM| DB[(SQLite / MSSQL)]
+  A -->|Tuỳ chọn Mongo| M[(MongoDB)]
+  A -->|Gemini prompt| AI[AI Advisor Service]
+  AI --> G[Gemini API]
+
+  A --> W
+```
+
+## Cấu trúc dự án
 
 ```
-├── client/           # Frontend — Vite + React + TypeScript
-├── server/           # Backend — NestJS
-├── ai-engine/        # (Tuỳ chọn) script Python huấn luyện / inference
-├── docker-compose.yml
+├── client/            # Frontend — Vite + React + TypeScript
+├── server/            # Backend — NestJS
+├── scripts/           # Script test OCR
+├── .github/workflows/ # CI/CD
+├── docker-compose.yml # (tuỳ chọn) chạy kèm DB
 └── README.md
 ```
 
-## Yêu cầu
+## Getting Started
 
-- Node.js 20+
-- Docker Desktop (để chạy SQL Server, MongoDB và build container API/Web)
-- Python 3.11+ (chỉ khi dùng `ai-engine`)
+### 1) Chạy local (SQLite mặc định)
 
-## Chạy nhanh (chỉ cơ sở dữ liệu)
+**Bước 1 — server**
 
 ```powershell
-cd "D:\FinMind AI-Powered Smart Finance Advisor"
-docker compose up -d sqlserver mongodb
-```
-
-- SQL Server: `localhost:1433` — user `sa`, mật khẩu mặc định trong compose: `YourStrong@Passw0rd` (nên đặt `MSSQL_SA_PASSWORD` trong file `.env` theo `.env.example`).
-- MongoDB: `mongodb://localhost:27017`
-
-Sau đó chạy API và giao diện trên máy:
-
-```powershell
-cd server; npm run start:dev
-```
-
-```powershell
-cd client; npm run dev
+cd "D:\FinMind AI-Powered Smart Finance Advisor\server"
+copy .env.example .env
+npm ci
+npm run start:dev
 ```
 
 - API: `http://localhost:3000`
-- Web (dev): `http://localhost:5173`
 
-## Một lệnh: DB + API + Web (Docker)
+**Bước 2 — client**
 
 ```powershell
+cd "D:\FinMind AI-Powered Smart Finance Advisor\client"
+npm ci
+npm run dev
+```
+
+- Web (dev): `http://localhost:5174`
+
+### 2) Chạy bằng Docker (tuỳ chọn)
+
+```powershell
+cp .env.example .env
 docker compose up --build
 ```
 
-- API: `http://localhost:3000`
 - Web (nginx): `http://localhost:8080`
+- API: `http://localhost:3000`
 
-**Lưu ý:** Service `api` hiện chỉ chạy ứng dụng Nest mặc định. Chuỗi `DATABASE_URL` / `MONGODB_URI` trong `docker-compose.yml` là placeholder — cần gắn TypeORM/Mongoose và tạo database `finmind` trên SQL Server khi bạn triển khai persistence thật.
-
-## AI Engine (Python)
-
-```powershell
-cd ai-engine
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+Lưu ý: `server/src/config/database.module.ts` quyết định DB dựa trên `DB_DRIVER` (`sqlite` mặc định). `docker-compose.yml` hiện dùng environment kiểu placeholder cho chuỗi kết nối; nếu muốn dùng MSSQL cần set thêm `DB_DRIVER=mssql` + `SQLSERVER_*` đúng theo `.env`.
 
 ## Biến môi trường
 
-Xem `.env.example`. Với Docker, tạo `.env` ở thư mục gốc và khai báo `MSSQL_SA_PASSWORD` nếu đổi mật khẩu `sa`.
+- Server: `server/.env.example` (copy thành `server/.env`)
+- Root (docker compose): `.env.example` → `.env`
+
+Gợi ý nhanh:
+- `SKIP_DB=false` → dùng SQLite file (`data/finmind.sqlite`)
+- AI Advisor cần `GEMINI_API_KEY`
+- JWT cần `JWT_SECRET`
+
+## API Overview (nhóm endpoint chính)
+
+- `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `PATCH /auth/profile`
+- `GET /categories`
+- `GET /accounts`, `GET /budgets`, `GET /saving-goals`, `GET /notifications`
+- `GET /dashboard/summary`
+- `GET/POST/PATCH/DELETE /transactions`
+- `POST /ocr/receipts/parse` (parse text từ OCR)
+- `POST /ai/advisor/chat` (chat)
+
+## CI/CD
+
+### CI — `.github/workflows/ci.yml`
+- Build **client** (`npm run build`)
+- Build + Test **server** (`npm run build` + `npm test`)
+- Build Docker images (không push) để bắt lỗi build sớm.
+
+### CD — `.github/workflows/cd-docker.yml`
+- Khi push tag `v*` (hoặc chạy thủ công), workflow sẽ build & **push images lên GHCR**:
+  - `ghcr.io/<owner>/<repo>-client:<tag>`
+  - `ghcr.io/<owner>/<repo>-server:<tag>`
+
+## OCR Test nhanh
+
+```powershell
+# Ví dụ: chạy script test OCR text → parse
+./scripts/test-ocr-curl.ps1
+```
+
+## Gợi ý nâng cấp (ít nhưng chất)
+
+- Đính kèm GIF demo `docs/demo.gif`
+- Thêm Live Demo link thật
+- Bổ sung smoke test (Playwright) để đảm bảo luồng Login → Dashboard → Scan OCR → Save transaction chạy ổn định sau mỗi release
